@@ -9,9 +9,10 @@
 #include "chainparams.h"
 #include "primitives/transaction.h"
 
+#include <algorithm>
+#include <map>
 #include <string>
 #include <vector>
-#include <map>
 
 // leveldb keys
 #define HASH_BLOCK 'h'
@@ -84,6 +85,11 @@ public:
     {
         return !(*this == other);
     }
+
+    bool IsValid() const
+    {
+        return !outPoint.IsNull() && !claimId.IsNull();
+    }
 };
 
 class CSupportValue
@@ -122,6 +128,11 @@ public:
     bool operator!=(const CSupportValue& other) const
     {
         return !(*this == other);
+    }
+
+    bool IsValid() const
+    {
+        return !outPoint.IsNull() && !supportedClaimId.IsNull();
     }
 };
 
@@ -285,14 +296,91 @@ typedef std::map<std::string, uint256> hashMapType;
 typedef std::set<CClaimValue> claimIndexClaimListType;
 typedef std::vector<CClaimIndexElement> claimIndexElementListType;
 
-struct claimsForNameType
+class CClaimSupport
 {
-    std::vector<CClaimValue> claims;
-    std::vector<CSupportValue> supports;
-    int nLastTakeoverHeight;
+public:
+    CClaimSupport()
+    {
+        effectiveAmount = 0;
+    }
 
-    claimsForNameType(std::vector<CClaimValue> claims, std::vector<CSupportValue> supports, int nLastTakeoverHeight)
-    : claims(claims), supports(supports), nLastTakeoverHeight(nLastTakeoverHeight) {}
+    CClaimSupport(const uint160& claimId, const CClaimValue& claim, CAmount effectiveAmount, const std::vector<CSupportValue>& support)
+        : claimId(claimId), claim(claim), effectiveAmount(effectiveAmount), support(support)
+    {
+    }
+
+    uint160 claimId;
+    CClaimValue claim;
+    CAmount effectiveAmount;
+    std::vector<CSupportValue> support;
+};
+
+class CClaimSupportToName
+{
+public:
+    CClaimSupportToName(int nValidHeight, int nLastTakeoverHeight, const std::vector<CClaimSupport>& claims)
+        : nValidHeight(nValidHeight), nLastTakeoverHeight(nLastTakeoverHeight), claims(claims)
+    {
+    }
+
+    const int nValidHeight;
+    const int nLastTakeoverHeight;
+    const std::vector<CClaimSupport> claims;
+
+    const std::vector<CClaimSupport>& toValidHeight()
+    {
+        if (!claimsToHeight.empty())
+            return claimsToHeight;
+
+        for (std::vector<CClaimSupport>::const_iterator it = claims.begin(); it != claims.end(); ++it) {
+            CClaimValue claim;
+            CAmount effectiveAmount = 0;
+            if (it->claim.IsValid() && it->claim.nValidAtHeight <= nValidHeight) {
+                claim = it->claim;
+                effectiveAmount += it->claim.nAmount;
+            }
+            std::vector<CSupportValue> validSupport;
+            const std::vector<CSupportValue>& support = it->support;
+            for (std::vector<CSupportValue>::const_iterator it = support.begin(); it != support.end(); ++it) {
+                if (it->nValidAtHeight > nValidHeight) continue;
+                effectiveAmount += it->nAmount;
+                validSupport.push_back(*it);
+            }
+            if (claim.IsValid() || !validSupport.empty())
+                claimsToHeight.push_back(CClaimSupport(it->claimId, claim, effectiveAmount, validSupport));
+        }
+
+        return claimsToHeight;
+    }
+
+private:
+    std::vector<CClaimSupport> claimsToHeight;
+};
+
+class CClaimIdMatcher
+{
+public:
+    CClaimIdMatcher(const uint160& claimId) : claimId(claimId)
+    {
+    }
+
+    bool operator()(const CClaimValue& value) const
+    {
+        return claimId == value.claimId;
+    }
+
+    bool operator()(const CClaimSupport& value) const
+    {
+        return claimId == value.claimId;
+    }
+
+    bool operator()(const CSupportValue& value) const
+    {
+        return claimId == value.supportedClaimId;
+    }
+
+private:
+    const uint160 claimId;
 };
 
 class CClaimTrieCache;
@@ -321,10 +409,7 @@ public:
     bool getInfoForName(const std::string& name, CClaimValue& claim) const;
     bool getLastTakeoverForName(const std::string& name, int& lastTakeoverHeight) const;
 
-    claimsForNameType getClaimsForName(const std::string& name) const;
-
-    CAmount getEffectiveAmountForClaim(const std::string& name, const uint160& claimId, std::vector<CSupportValue>* supports = NULL) const;
-    CAmount getEffectiveAmountForClaim(const claimsForNameType& claims, const uint160& claimId, std::vector<CSupportValue>* supports = NULL) const;
+    CClaimSupportToName getClaimsForName(const std::string& name) const;
 
     bool queueEmpty() const;
     bool supportEmpty() const;
@@ -535,10 +620,7 @@ public:
 
     std::vector<namedNodeType> flattenTrie() const;
 
-    claimsForNameType getClaimsForName(const std::string& name) const;
-
-    CAmount getEffectiveAmountForClaim(const std::string& name, const uint160& claimId, std::vector<CSupportValue>* supports = NULL) const;
-    CAmount getEffectiveAmountForClaim(const claimsForNameType& claims, const uint160& claimId, std::vector<CSupportValue>* supports = NULL) const;
+    CClaimSupportToName getClaimsForName(const std::string& name) const;
 
 protected:
     CClaimTrie* base;

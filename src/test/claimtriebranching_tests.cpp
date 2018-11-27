@@ -60,30 +60,29 @@ is_best_claim(std::string name, const CTransaction &tx)
 }
 // check effective quantity of best claim
 boost::test_tools::predicate_result
-best_claim_effective_amount_equals(std::string name, CAmount amount)
+best_claim_effective_amount_equals(std::string name, CAmount amount, const uint160& claimId = uint160())
 {
-    CClaimValue val;
-    bool have_info = pclaimTrie->getInfoForName(name, val);
-    if (!have_info)
-    {
+    CClaimTrieCache trieCache(pclaimTrie);
+    std::vector<CClaimSupport> claims = trieCache.getClaimsForName(name).toValidHeight();
+    if (claims.empty()) {
         boost::test_tools::predicate_result res(false);
-        res.message()<<"No claim found";
+        res.message() << "No claim found";
         return res;
     }
-    else
-    {
-        CAmount effective_amount = pclaimTrie->getEffectiveAmountForClaim(name, val.claimId);
-        if (effective_amount != amount)
-        {
-            boost::test_tools::predicate_result res(false);
-            res.message()<<amount<<" != "<<effective_amount;
-            return res;
-        }
-        else
-        {
-            return true;
-        }
+    if (claims[0].effectiveAmount != amount) {
+        boost::test_tools::predicate_result res(false);
+        res.message() << amount << " != " << claims[0].effectiveAmount;
+        return res;
     }
+    return true;
+}
+
+CAmount getEffectiveAmountForClaim(std::string name, const uint160& claimId)
+{
+    CClaimTrieCache trieCache(pclaimTrie);
+    std::vector<CClaimSupport> claims = trieCache.getClaimsForName(name).toValidHeight();
+    std::vector<CClaimSupport>::const_iterator it = std::find_if(claims.begin(), claims.end(), CClaimIdMatcher(claimId));
+    return it == claims.end() ? 0 : it->effectiveAmount;
 }
 
 CMutableTransaction BuildTransaction(const CMutableTransaction& prev, uint32_t prevout=0, unsigned int numOutputs=1)
@@ -780,7 +779,7 @@ BOOST_AUTO_TEST_CASE(claimtrie_expire_test)
 }
 
 /*
- * tests for CClaimTrie::getEffectiveAmountForClaim
+ * tests effectiveAmount
  */
 BOOST_AUTO_TEST_CASE(claimtriebranching_get_effective_amount_for_claim)
 {
@@ -790,38 +789,38 @@ BOOST_AUTO_TEST_CASE(claimtriebranching_get_effective_amount_for_claim)
     uint160 claimId = ClaimIdHash(claimtx.GetHash(), 0);
     fixture.IncrementBlocks(1);
 
-    BOOST_CHECK(pclaimTrie->getEffectiveAmountForClaim("test", claimId) == 2);
-    BOOST_CHECK(pclaimTrie->getEffectiveAmountForClaim("inexistent", claimId) == 0); //not found returns 0
+    BOOST_CHECK(getEffectiveAmountForClaim("test", claimId) == 2);
+    BOOST_CHECK(getEffectiveAmountForClaim("inexistent", claimId) == 0); //not found returns 0
 
     // one claim, one support
     fixture.MakeSupport(fixture.GetCoinbase(), claimtx, "test", 40);
     fixture.IncrementBlocks(1);
 
-    BOOST_CHECK(pclaimTrie->getEffectiveAmountForClaim("test", claimId) == 42);
+    BOOST_CHECK(getEffectiveAmountForClaim("test", claimId) == 42);
 
     // Two claims, first one with supports
     CMutableTransaction claimtx2 = fixture.MakeClaim(fixture.GetCoinbase(), "test", "two", 1);
     uint160 claimId2 = ClaimIdHash(claimtx2.GetHash(), 0);
     fixture.IncrementBlocks(10);
 
-    BOOST_CHECK(pclaimTrie->getEffectiveAmountForClaim("test", claimId) == 42);
-    BOOST_CHECK(pclaimTrie->getEffectiveAmountForClaim("test", claimId2) == 1);
-    BOOST_CHECK(pclaimTrie->getEffectiveAmountForClaim("inexistent", claimId) == 0);
-    BOOST_CHECK(pclaimTrie->getEffectiveAmountForClaim("inexistent", claimId2) == 0);
+    BOOST_CHECK(getEffectiveAmountForClaim("test", claimId) == 42);
+    BOOST_CHECK(getEffectiveAmountForClaim("test", claimId2) == 1);
+    BOOST_CHECK(getEffectiveAmountForClaim("inexistent", claimId) == 0);
+    BOOST_CHECK(getEffectiveAmountForClaim("inexistent", claimId2) == 0);
 
     // Two claims, both with supports, second claim effective amount being less than first claim
     fixture.MakeSupport(fixture.GetCoinbase(), claimtx2, "test", 6);
     fixture.IncrementBlocks(13); //delay
 
-    BOOST_CHECK(pclaimTrie->getEffectiveAmountForClaim("test", claimId) == 42);
-    BOOST_CHECK(pclaimTrie->getEffectiveAmountForClaim("test", claimId2) == 7);
+    BOOST_CHECK(getEffectiveAmountForClaim("test", claimId) == 42);
+    BOOST_CHECK(getEffectiveAmountForClaim("test", claimId2) == 7);
 
     // Two claims, both with supports, second one taking over
     fixture.MakeSupport(fixture.GetCoinbase(), claimtx2, "test", 1330);
     fixture.IncrementBlocks(26); //delay
 
-    BOOST_CHECK(pclaimTrie->getEffectiveAmountForClaim("test", claimId) == 42);
-    BOOST_CHECK(pclaimTrie->getEffectiveAmountForClaim("test", claimId2) == 1337);
+    BOOST_CHECK(getEffectiveAmountForClaim("test", claimId) == 42);
+    BOOST_CHECK(getEffectiveAmountForClaim("test", claimId2) == 1337);
 }
 
 /*
@@ -3304,8 +3303,8 @@ BOOST_AUTO_TEST_CASE(getclaimsforname_test)
     UniValue claims = results["claims"];
     BOOST_CHECK(claims.size() == 2U);
     BOOST_CHECK(results["nLastTakeoverHeight"].get_int() == height + 1);
-    BOOST_CHECK(claims[0]["nEffectiveAmount"].get_int() == 0);
-    BOOST_CHECK(claims[1]["nEffectiveAmount"].get_int() == 2);
+    BOOST_CHECK(claims[0]["nEffectiveAmount"].get_int() == 2); // best claim
+    BOOST_CHECK(claims[1]["nEffectiveAmount"].get_int() == 0);
     BOOST_CHECK(claims[0]["supports"].size() == 0U);
     BOOST_CHECK(claims[1]["supports"].size() == 0U);
 
@@ -3315,7 +3314,7 @@ BOOST_AUTO_TEST_CASE(getclaimsforname_test)
     claims = results["claims"];
     BOOST_CHECK(claims.size() == 2U);
     BOOST_CHECK(results["nLastTakeoverHeight"].get_int() == height + 3);
-    BOOST_CHECK(claims[0]["nEffectiveAmount"].get_int() == 3);
+    BOOST_CHECK(claims[0]["nEffectiveAmount"].get_int() == 3); // best claim
     BOOST_CHECK(claims[1]["nEffectiveAmount"].get_int() == 2);
     BOOST_CHECK(claims[0]["supports"].size() == 0U);
     BOOST_CHECK(claims[1]["supports"].size() == 0U);
