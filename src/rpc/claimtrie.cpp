@@ -115,10 +115,10 @@ UniValue getclaimsintrie(const UniValue& params, bool fHelp)
     UniValue ret(UniValue::VARR);
     std::vector<namedNodeType> nodes = trieCache.flattenTrie();
     for (std::vector<namedNodeType>::iterator it = nodes.begin(); it != nodes.end(); ++it) {
-        if (it->second.claims.empty()) continue;
+        if (it->second->claims.empty()) continue;
 
         UniValue claims(UniValue::VARR);
-        for (std::vector<CClaimValue>::iterator itClaims = it->second.claims.begin(); itClaims != it->second.claims.end(); ++itClaims) {
+        for (nodeClaimsType::const_iterator itClaims = it->second->claims.begin(); itClaims != it->second->claims.end(); ++itClaims) {
             UniValue claim(UniValue::VOBJ);
             claim.push_back(Pair("claimId", itClaims->claimId.GetHex()));
             claim.push_back(Pair("txid", itClaims->outPoint.hash.GetHex()));
@@ -194,9 +194,9 @@ UniValue getclaimtrie(const UniValue& params, bool fHelp)
     {
         UniValue node(UniValue::VOBJ);
         node.push_back(Pair("name", it->first));
-        node.push_back(Pair("hash", it->second.hash.GetHex()));
+        node.push_back(Pair("hash", it->second->hash.GetHex()));
         CClaimValue claim;
-        if (it->second.getBestClaim(claim))
+        if (it->second->getBestClaim(claim))
         {
             node.push_back(Pair("txid", claim.outPoint.hash.GetHex()));
             node.push_back(Pair("n", (int)claim.outPoint.n));

@@ -87,6 +87,7 @@ endif
 # bitcoin core #
 BITCOIN_CORE_H = \
   addrman.h \
+  allocator.h \
   base58.h \
   bloom.h \
   chain.h \
@@ -114,6 +115,8 @@ BITCOIN_CORE_H = \
   dbwrapper.h \
   limitedmap.h \
   main.h \
+  memoryfile.h \
+  memoryfilemanager.h \
   memusage.h \
   merkleblock.h \
   miner.h \
@@ -123,6 +126,7 @@ BITCOIN_CORE_H = \
   net.h \
   netbase.h \
   noui.h \
+  pointer.h \
   policy/fees.h \
   policy/policy.h \
   policy/rbf.h \
@@ -189,6 +193,8 @@ libbitcoin_server_a_SOURCES = \
   lbry.cpp \
   main.cpp \
   merkleblock.cpp \
+  memoryfile.cpp \
+  memoryfilemanager.cpp \
   miner.cpp \
   claimtrie.cpp \
   net.cpp \

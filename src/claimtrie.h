@@ -2,12 +2,14 @@
 #define BITCOIN_CLAIMTRIE_H
 
 #include "amount.h"
+#include "allocator.h"
+#include "chainparams.h"
+#include "dbwrapper.h"
+#include "pointer.h"
+#include "primitives/transaction.h"
 #include "serialize.h"
 #include "uint256.h"
 #include "util.h"
-#include "dbwrapper.h"
-#include "chainparams.h"
-#include "primitives/transaction.h"
 
 #include <string>
 #include <vector>
@@ -128,13 +130,25 @@ public:
 class CClaimTrieNode;
 class CClaimTrie;
 
+typedef std::map <
+    unsigned char,
+    CPointer<CClaimTrieNode>,
+    std::less<unsigned char>,
+    CContainerAllocator <
+        std::pair <
+            const unsigned char,
+            CPointer<CClaimTrieNode>
+        >,  CClaimTrieNode
+    >
+> nodeMapType;
+
+typedef std::vector<CClaimValue, CContainerAllocator<CClaimValue, CClaimTrieNode> > nodeClaimsType;
+
 typedef std::vector<CSupportValue> supportMapEntryType;
 
-typedef std::map<unsigned char, CClaimTrieNode*> nodeMapType;
+typedef std::pair<std::string, const CClaimTrieNode*> namedNodeType;
 
-typedef std::pair<std::string, CClaimTrieNode> namedNodeType;
-
-class CClaimTrieNode
+class CClaimTrieNode : public CTypeAllocator<CClaimTrieNode>
 {
 public:
     CClaimTrieNode() : nHeightOfLastTakeover(0) {}
@@ -142,9 +156,9 @@ public:
     uint256 hash;
     nodeMapType children;
     int nHeightOfLastTakeover;
-    std::vector<CClaimValue> claims;
+    nodeClaimsType claims;
 
-    bool insertClaim(CClaimValue claim);
+    bool insertClaim(const CClaimValue& claim);
     bool removeClaim(const COutPoint& outPoint, CClaimValue& claim);
     bool getBestClaim(CClaimValue& claim) const;
     bool empty() const {return children.empty() && claims.empty();}
@@ -278,7 +292,8 @@ typedef std::map<int, claimQueueRowType> claimQueueType;
 typedef std::vector<supportQueueEntryType> supportQueueRowType;
 typedef std::map<int, supportQueueRowType> supportQueueType;
 
-typedef std::map<std::string, CClaimTrieNode*, nodenamecompare> nodeCacheType;
+typedef std::map<std::string, const CClaimTrieNode*, nodenamecompare> dirtyNodeType;
+typedef std::map<std::string, CPointer<CClaimTrieNode>, nodenamecompare> nodeCacheType;
 
 typedef std::map<std::string, uint256> hashMapType;
 
@@ -304,7 +319,7 @@ public:
                : db(GetDataDir() / "claimtrie", 100, fMemory, fWipe, false)
                , nCurrentHeight(0), nExpirationTime(Params().GetConsensus().nOriginalClaimExpirationTime)
                , nProportionalDelayFactor(nProportionalDelayFactor)
-               , root(uint256S("0000000000000000000000000000000000000000000000000000000000000001"))
+               , root(new CClaimTrieNode(uint256S("0000000000000000000000000000000000000000000000000000000000000001")))
     {}
 
     uint256 getMerkleHash();
@@ -420,7 +435,7 @@ private:
     void BatchWriteSupportExpirationQueueRows(CDBBatch& batch);
     template<typename K> bool keyTypeEmpty(char key, K& dummy) const;
 
-    CClaimTrieNode root;
+    CPointer<CClaimTrieNode> root;
     uint256 hashBlock;
 
     claimQueueType dirtyQueueRows;
@@ -431,7 +446,7 @@ private:
     queueNameType dirtySupportQueueNameRows;
     expirationQueueType dirtySupportExpirationQueueRows;
 
-    nodeCacheType dirtyNodes;
+    dirtyNodeType dirtyNodes;
     supportMapType dirtySupportNodes;
 };
 
@@ -479,7 +494,7 @@ public:
     CClaimTrieNode* getRoot() const
     {
         nodeCacheType::iterator iter = cache.find("");
-        return iter == cache.end() ? &(base->root) : iter->second;
+        return iter == cache.end() ? base->root : iter->second;
     }
 
     bool addClaim(const std::string& name, const COutPoint& outPoint,
