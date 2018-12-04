@@ -403,28 +403,6 @@ CAmount CClaimTrie::getTotalValueOfClaimsRecursive(const CClaimTrieNode* current
      return value_in_subtrie;
 }
 
-bool CClaimTrie::recursiveFlattenTrie(const std::string& name, const CClaimTrieNode* current, std::vector<namedNodeType>& nodes) const
-{
-    namedNodeType node(name, *current);
-    nodes.push_back(node);
-    for (nodeMapType::const_iterator it = current->children.begin(); it != current->children.end(); ++it)
-    {
-        std::stringstream ss;
-        ss << name << it->first;
-        if (!recursiveFlattenTrie(ss.str(), it->second, nodes))
-            return false;
-    }
-    return true;
-}
-
-std::vector<namedNodeType> CClaimTrie::flattenTrie() const
-{
-    std::vector<namedNodeType> nodes;
-    if (!recursiveFlattenTrie("", &root, nodes))
-        LogPrintf("%s: Something went wrong flattening the trie", __func__);
-    return nodes;
-}
-
 const CClaimTrieNode* CClaimTrie::getNodeForName(const std::string& name) const
 {
     const CClaimTrieNode* current = &root;
@@ -2541,25 +2519,28 @@ uint256 CClaimTrieCache::getLeafHashForProof(const std::string& currentPosition,
     }
 }
 
-void CClaimTrieCache::recursiveFlattenTrie(const std::string& name, const CClaimTrieNode* current, std::vector<namedNodeType>& nodes) const
+void CClaimTrieCache::recursiveIterateTrie(const std::string& name, const CClaimTrieNode* current, CNodeCallback& callback) const
 {
-    nodes.push_back(std::make_pair(name, *current));
+    if (!callback.visit(name, current))
+        throw CRecursionInterrupter();
+
     nodeCacheType::const_iterator cachedNode;
     for (nodeMapType::const_iterator it = current->children.begin(); it != current->children.end(); ++it) {
         const std::string str = name + char(it->first);
         cachedNode = cache.find(str);
         if (cachedNode != cache.end())
-            recursiveFlattenTrie(str, cachedNode->second, nodes);
+            recursiveIterateTrie(str, cachedNode->second, callback);
         else
-            recursiveFlattenTrie(str, it->second, nodes);
+            recursiveIterateTrie(str, it->second, callback);
     }
 }
 
-std::vector<namedNodeType> CClaimTrieCache::flattenTrie() const
+void CClaimTrieCache::iterateTrie(CNodeCallback& callback) const
 {
-    std::vector<namedNodeType> nodes;
-    recursiveFlattenTrie("", getRoot(), nodes);
-    return nodes;
+    try {
+        recursiveIterateTrie("", getRoot(), callback);
+    } catch (const CRecursionInterrupter&) {
+    }
 }
 
 claimsForNameType CClaimTrieCache::getClaimsForName(const std::string& name) const

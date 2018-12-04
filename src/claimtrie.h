@@ -132,8 +132,6 @@ typedef std::vector<CSupportValue> supportMapEntryType;
 
 typedef std::map<unsigned char, CClaimTrieNode*> nodeMapType;
 
-typedef std::pair<std::string, CClaimTrieNode> namedNodeType;
-
 class CClaimTrieNode
 {
 public:
@@ -317,7 +315,6 @@ public:
     bool WriteToDisk();
     bool ReadFromDisk(bool check = false);
 
-    std::vector<namedNodeType> flattenTrie() const;
     bool getInfoForName(const std::string& name, CClaimValue& claim) const;
     bool getLastTakeoverForName(const std::string& name, int& lastTakeoverHeight) const;
 
@@ -392,9 +389,6 @@ private:
     unsigned int getTotalClaimsRecursive(const CClaimTrieNode* current) const;
     CAmount getTotalValueOfClaimsRecursive(const CClaimTrieNode* current,
                                            bool fControllingOnly) const;
-    bool recursiveFlattenTrie(const std::string& name,
-                              const CClaimTrieNode* current,
-                              std::vector<namedNodeType>& nodes) const;
 
     void markNodeDirty(const std::string& name, CClaimTrieNode* node);
     void updateQueueRow(int nHeight, claimQueueRowType& row);
@@ -457,6 +451,26 @@ public:
     bool hasValue;
     COutPoint outPoint;
     int nHeightOfLastTakeover;
+};
+
+class CNodeCallback
+{
+public:
+    CNodeCallback()
+    {
+    }
+
+    virtual ~CNodeCallback()
+    {
+    }
+
+    /**
+     * Callback to be called on every trie node
+     * @param[in] name      full name of the node
+     * @param[in] node      pointer to node itself
+     * Returning false will indicate end of iteration
+     */
+    virtual bool visit(const std::string& name, const CClaimTrieNode* node) = 0;
 };
 
 class CClaimTrieCache
@@ -533,7 +547,7 @@ public:
 
     bool forkForExpirationChange(bool increment) const;
 
-    std::vector<namedNodeType> flattenTrie() const;
+    void iterateTrie(CNodeCallback& callback) const;
 
     claimsForNameType getClaimsForName(const std::string& name) const;
 
@@ -635,7 +649,9 @@ protected:
 
     int getNumBlocksOfContinuousOwnership(const std::string& name) const;
 
-    void recursiveFlattenTrie(const std::string& name, const CClaimTrieNode* current, std::vector<namedNodeType>& nodes) const;
+    struct CRecursionInterrupter {
+    };
+    void recursiveIterateTrie(const std::string& name, const CClaimTrieNode* current, CNodeCallback& callback) const;
 
     const CClaimTrieNode* getNodeForName(const std::string& name) const;
 };
