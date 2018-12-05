@@ -119,10 +119,10 @@ UniValue getclaimsintrie(const UniValue& params, bool fHelp)
         {
         }
 
-        bool visit(const std::string& name, const CClaimTrieNode* node)
+        void visit(const std::string& name, const CClaimTrieNode* node)
         {
             if (node->claims.empty())
-                return true;
+                return;
 
             UniValue claims(UniValue::VARR);
             for (std::vector<CClaimValue>::const_iterator itClaims = node->claims.begin(); itClaims != node->claims.end(); ++itClaims) {
@@ -156,7 +156,6 @@ UniValue getclaimsintrie(const UniValue& params, bool fHelp)
             nodeObj.push_back(Pair("name", name));
             nodeObj.push_back(Pair("claims", claims));
             nodes.push_back(nodeObj);
-            return true;
         }
 
     private:
@@ -212,7 +211,7 @@ UniValue getclaimtrie(const UniValue& params, bool fHelp)
         {
         }
 
-        bool visit(const std::string& name, const CClaimTrieNode* node)
+        void visit(const std::string& name, const CClaimTrieNode* node)
         {
             UniValue nodeObj(UniValue::VOBJ);
             nodeObj.push_back(Pair("name", name));
@@ -225,7 +224,6 @@ UniValue getclaimtrie(const UniValue& params, bool fHelp)
                 nodeObj.push_back(Pair("height", claim.nHeight));
             }
             nodes.push_back(nodeObj);
-            return true;
         }
 
     private:

@@ -2519,26 +2519,40 @@ uint256 CClaimTrieCache::getLeafHashForProof(const std::string& currentPosition,
     }
 }
 
-void CClaimTrieCache::recursiveIterateTrie(const std::string& name, const CClaimTrieNode* current, CNodeCallback& callback) const
+void CClaimTrieCache::recursiveIterateTrie(std::string& name, const CClaimTrieNode* current, CNodeCallback& callback) const
 {
-    if (!callback.visit(name, current))
-        throw CRecursionInterrupter();
+    callback.visit(name, current);
 
     nodeCacheType::const_iterator cachedNode;
     for (nodeMapType::const_iterator it = current->children.begin(); it != current->children.end(); ++it) {
-        const std::string str = name + char(it->first);
-        cachedNode = cache.find(str);
+        name.push_back(it->first);
+        cachedNode = cache.find(name);
         if (cachedNode != cache.end())
-            recursiveIterateTrie(str, cachedNode->second, callback);
+            recursiveIterateTrie(name, cachedNode->second, callback);
         else
-            recursiveIterateTrie(str, it->second, callback);
+            recursiveIterateTrie(name, it->second, callback);
+        name.erase(name.end() - 1);
     }
 }
 
 void CClaimTrieCache::iterateTrie(CNodeCallback& callback) const
 {
+    class CNodeInterruptionPoint : public CCallbackInterruptionPoint
+    {
+    public:
+        void interrupt()
+        {
+            throw CRecursionInterrupter();
+        }
+    };
+
+    CNodeInterruptionPoint point;
+    CScopedInterruptionPoint scopePoint(callback, point);
+
     try {
-        recursiveIterateTrie("", getRoot(), callback);
+        std::string name;
+        recursiveIterateTrie(name, getRoot(), callback);
+        assert(name.empty());
     } catch (const CRecursionInterrupter&) {
     }
 }

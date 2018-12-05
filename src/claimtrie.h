@@ -453,10 +453,24 @@ public:
     int nHeightOfLastTakeover;
 };
 
+class CCallbackInterruptionPoint
+{
+public:
+    CCallbackInterruptionPoint()
+    {
+    }
+
+    virtual ~CCallbackInterruptionPoint()
+    {
+    }
+
+    virtual void interrupt() = 0;
+};
+
 class CNodeCallback
 {
 public:
-    CNodeCallback()
+    CNodeCallback() : point(0)
     {
     }
 
@@ -465,12 +479,53 @@ public:
     }
 
     /**
+     * Set an interruption point to have ability to stop external callback calls
+     * @param[in] newPoint      new interruption point
+     * Returns old interruption point
+     */
+    CCallbackInterruptionPoint* setInterruptionPoint(CCallbackInterruptionPoint* newPoint)
+    {
+        CCallbackInterruptionPoint* oldPoint = point;
+        point = newPoint;
+        return oldPoint;
+    }
+
+    /**
+     * Call this function inside @visit to stop its calls if ability presents
+     */
+    void interruptionPoint()
+    {
+        if (point)
+            point->interrupt();
+    }
+
+    /**
      * Callback to be called on every trie node
      * @param[in] name      full name of the node
      * @param[in] node      pointer to node itself
-     * Returning false will indicate end of iteration
      */
-    virtual bool visit(const std::string& name, const CClaimTrieNode* node) = 0;
+    virtual void visit(const std::string& name, const CClaimTrieNode* node) = 0;
+
+private:
+    CCallbackInterruptionPoint* point;
+};
+
+class CScopedInterruptionPoint
+{
+public:
+    CScopedInterruptionPoint(CNodeCallback& callback, CCallbackInterruptionPoint& point)
+        : callback(callback)
+    {
+        oldPoint = callback.setInterruptionPoint(&point);
+    }
+    ~CScopedInterruptionPoint()
+    {
+        callback.setInterruptionPoint(oldPoint);
+    }
+
+private:
+    CNodeCallback& callback;
+    CCallbackInterruptionPoint* oldPoint;
 };
 
 class CClaimTrieCache
@@ -651,7 +706,7 @@ protected:
 
     struct CRecursionInterrupter {
     };
-    void recursiveIterateTrie(const std::string& name, const CClaimTrieNode* current, CNodeCallback& callback) const;
+    void recursiveIterateTrie(std::string& name, const CClaimTrieNode* current, CNodeCallback& callback) const;
 
     const CClaimTrieNode* getNodeForName(const std::string& name) const;
 };

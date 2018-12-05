@@ -274,5 +274,48 @@ BOOST_AUTO_TEST_CASE(recursive_prune_test)
     BOOST_CHECK_EQUAL(0, it->second->children.size());
 }
 
+BOOST_AUTO_TEST_CASE(iteratetrie_test)
+{
+    BOOST_CHECK(pclaimTrie->empty());
+    CClaimTrieCacheTest ctc(pclaimTrie);
+
+    uint256 hash0(uint256S("0000000000000000000000000000000000000000000000000000000000000001"));
+    CMutableTransaction tx1 = BuildTransaction(hash0);
+
+    const uint256 txhash = tx1.GetHash();
+    CClaimValue claimVal(COutPoint(txhash, 0), ClaimIdHash(txhash, 0), CAmount(10), 0, 0);
+    ctc.insertClaimIntoTrie("test", claimVal);
+
+    // dummy interruption point
+    struct DummyPoint : public CCallbackInterruptionPoint {
+        void interrupt()
+        {
+        }
+    } dummyPoint;
+
+    int count = 0;
+
+    struct TestCallBack : public CNodeCallback {
+        TestCallBack(int& count) : count(count)
+        {
+        }
+
+        void visit(const std::string& name, const CClaimTrieNode* node)
+        {
+            if (name == "test") {
+                count++;
+                BOOST_CHECK(node->claims.size() == 1);
+                interruptionPoint();
+            }
+        }
+
+        int& count;
+    } testCallback(count);
+
+    BOOST_CHECK(testCallback.setInterruptionPoint(&dummyPoint) == 0);
+    ctc.iterateTrie(testCallback);
+    BOOST_CHECK(count == 1);
+    BOOST_CHECK(testCallback.setInterruptionPoint(0) == &dummyPoint);
+}
 
 BOOST_AUTO_TEST_SUITE_END()
