@@ -122,7 +122,7 @@ UniValue getclaimsintrie(const UniValue& params, bool fHelp)
         void visit(const std::string& name, const CClaimTrieNode* node)
         {
             if (ShutdownRequested())
-                interruptionPoint();
+                throw JSONRPCError(RPC_INTERNAL_ERROR, "Shutdown requested");
 
             boost::this_thread::interruption_point();
 
@@ -219,7 +219,7 @@ UniValue getclaimtrie(const UniValue& params, bool fHelp)
         void visit(const std::string& name, const CClaimTrieNode* node)
         {
             if (ShutdownRequested())
-                interruptionPoint();
+                throw JSONRPCError(RPC_INTERNAL_ERROR, "Shutdown requested");
 
             boost::this_thread::interruption_point();
 

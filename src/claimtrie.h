@@ -453,79 +453,24 @@ public:
     int nHeightOfLastTakeover;
 };
 
-class CCallbackInterruptionPoint
+struct CNodeCallback
 {
-public:
-    CCallbackInterruptionPoint()
-    {
-    }
-
-    virtual ~CCallbackInterruptionPoint()
-    {
-    }
-
-    virtual void interrupt() = 0;
-};
-
-class CNodeCallback
-{
-public:
-    CNodeCallback() : point(0)
-    {
-    }
+    struct CRecursionInterruptionException: public std::exception {
+        const bool success;
+        CRecursionInterruptionException(bool success) : success(success) {}
+    };
 
     virtual ~CNodeCallback()
     {
     }
 
     /**
-     * Set an interruption point to have ability to stop external callback calls
-     * @param[in] newPoint      new interruption point
-     * Returns old interruption point
-     */
-    CCallbackInterruptionPoint* setInterruptionPoint(CCallbackInterruptionPoint* newPoint)
-    {
-        CCallbackInterruptionPoint* oldPoint = point;
-        point = newPoint;
-        return oldPoint;
-    }
-
-    /**
-     * Call this function inside @visit to stop its calls if ability presents
-     */
-    void interruptionPoint()
-    {
-        if (point)
-            point->interrupt();
-    }
-
-    /**
      * Callback to be called on every trie node
      * @param[in] name      full name of the node
      * @param[in] node      pointer to node itself
+     * @returns true to stop recursing
      */
     virtual void visit(const std::string& name, const CClaimTrieNode* node) = 0;
-
-private:
-    CCallbackInterruptionPoint* point;
-};
-
-class CScopedInterruptionPoint
-{
-public:
-    CScopedInterruptionPoint(CNodeCallback& callback, CCallbackInterruptionPoint& point)
-        : callback(callback)
-    {
-        oldPoint = callback.setInterruptionPoint(&point);
-    }
-    ~CScopedInterruptionPoint()
-    {
-        callback.setInterruptionPoint(oldPoint);
-    }
-
-private:
-    CNodeCallback& callback;
-    CCallbackInterruptionPoint* oldPoint;
 };
 
 class CClaimTrieCache
@@ -602,7 +547,7 @@ public:
 
     bool forkForExpirationChange(bool increment) const;
 
-    void iterateTrie(CNodeCallback& callback) const;
+    bool iterateTrie(CNodeCallback& callback) const;
 
     claimsForNameType getClaimsForName(const std::string& name) const;
 
@@ -704,8 +649,6 @@ protected:
 
     int getNumBlocksOfContinuousOwnership(const std::string& name) const;
 
-    struct CRecursionInterrupter {
-    };
     void recursiveIterateTrie(std::string& name, const CClaimTrieNode* current, CNodeCallback& callback) const;
 
     const CClaimTrieNode* getNodeForName(const std::string& name) const;

@@ -2535,26 +2535,16 @@ void CClaimTrieCache::recursiveIterateTrie(std::string& name, const CClaimTrieNo
     }
 }
 
-void CClaimTrieCache::iterateTrie(CNodeCallback& callback) const
+bool CClaimTrieCache::iterateTrie(CNodeCallback& callback) const
 {
-    class CNodeInterruptionPoint : public CCallbackInterruptionPoint
-    {
-    public:
-        void interrupt()
-        {
-            throw CRecursionInterrupter();
-        }
-    };
-
-    CNodeInterruptionPoint point;
-    CScopedInterruptionPoint scopePoint(callback, point);
-
     try {
         std::string name;
         recursiveIterateTrie(name, getRoot(), callback);
         assert(name.empty());
-    } catch (const CRecursionInterrupter&) {
+    } catch (const CNodeCallback::CRecursionInterruptionException& ex)  {
+        return ex.success;
     }
+    return true;
 }
 
 claimsForNameType CClaimTrieCache::getClaimsForName(const std::string& name) const

@@ -286,12 +286,6 @@ BOOST_AUTO_TEST_CASE(iteratetrie_test)
     CClaimValue claimVal(COutPoint(txhash, 0), ClaimIdHash(txhash, 0), CAmount(10), 0, 0);
     ctc.insertClaimIntoTrie("test", claimVal);
 
-    // dummy interruption point
-    struct DummyPoint : public CCallbackInterruptionPoint {
-        void interrupt()
-        {
-        }
-    } dummyPoint;
 
     int count = 0;
 
@@ -302,20 +296,36 @@ BOOST_AUTO_TEST_CASE(iteratetrie_test)
 
         void visit(const std::string& name, const CClaimTrieNode* node)
         {
+            count++;
             if (name == "test") {
-                count++;
                 BOOST_CHECK(node->claims.size() == 1);
-                interruptionPoint();
             }
         }
 
         int& count;
     } testCallback(count);
 
-    BOOST_CHECK(testCallback.setInterruptionPoint(&dummyPoint) == 0);
-    ctc.iterateTrie(testCallback);
-    BOOST_CHECK(count == 1);
-    BOOST_CHECK(testCallback.setInterruptionPoint(0) == &dummyPoint);
+    BOOST_CHECK(ctc.iterateTrie(testCallback));
+    BOOST_CHECK(count == 5);
+
+    count = 3;
+
+    struct TestCallBack2 : public CNodeCallback {
+        TestCallBack2(int& count) : count(count)
+        {
+        }
+
+        void visit(const std::string& name, const CClaimTrieNode* node)
+        {
+            if (--count <= 0)
+                throw CNodeCallback::CRecursionInterruptionException(false);
+        }
+
+        int& count;
+    } testCallback2(count);
+
+    BOOST_CHECK(!ctc.iterateTrie(testCallback2));
+    BOOST_CHECK(count == 0);
 }
 
 BOOST_AUTO_TEST_SUITE_END()
