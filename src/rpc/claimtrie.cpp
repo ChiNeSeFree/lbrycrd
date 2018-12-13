@@ -121,6 +121,11 @@ UniValue getclaimsintrie(const UniValue& params, bool fHelp)
 
         void visit(const std::string& name, const CClaimTrieNode* node)
         {
+            if (ShutdownRequested())
+                interruptionPoint();
+
+            boost::this_thread::interruption_point();
+
             if (node->claims.empty())
                 return;
 
@@ -213,6 +218,11 @@ UniValue getclaimtrie(const UniValue& params, bool fHelp)
 
         void visit(const std::string& name, const CClaimTrieNode* node)
         {
+            if (ShutdownRequested())
+                interruptionPoint();
+
+            boost::this_thread::interruption_point();
+
             UniValue nodeObj(UniValue::VOBJ);
             nodeObj.push_back(Pair("name", name));
             nodeObj.push_back(Pair("hash", node->hash.GetHex()));
